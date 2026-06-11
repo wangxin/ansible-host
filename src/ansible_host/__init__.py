@@ -30,6 +30,7 @@ from ansible.inventory.manager import InventoryManager
 from ansible.module_utils.common.collections import ImmutableDict
 from ansible.parsing.dataloader import DataLoader
 from ansible.playbook.play import Play
+from ansible.plugins.callback import CallbackBase
 from ansible.plugins.loader import init_plugin_loader, module_loader
 from ansible.utils.display import Display
 from ansible.vars.hostvars import HostVars
@@ -40,6 +41,103 @@ init_plugin_loader()
 
 # Logger for Ansible Python API
 logger = logging.getLogger("ansible_pyapi")
+
+
+class _JsonResultsCallback(CallbackBase):
+    """Internal result collector for AnsibleHostsBase._run.
+
+    Not registered via Ansible's plugin loader: it is instantiated directly
+    by _run and attached to the TaskQueueManager's _callback_plugins list.
+    The leading underscore marks this as package-private; downstream users
+    should rely on the structured results returned by run_module() / .results
+    rather than instantiating this class themselves.
+
+    Derived from the json_results callback in sonic-net/sonic-mgmt (Apache 2.0).
+    """
+
+    CALLBACK_VERSION = 2.0
+    # Deliberately NOT 'stdout' — Ansible's built-in `null` stdout callback
+    # handles terminal output (silently); this collector is purely a result sink.
+    CALLBACK_TYPE = "notification"
+    CALLBACK_NAME = "ansible_host._json_results"
+
+    TASK_FIELDS = (
+        "action",
+        "become",
+        "become_method",
+        "become_user",
+        "connection",
+        "ignore_errors",
+        "ignore_unreachable",
+        "register",
+        "retries",
+        "timeout",
+    )
+
+    def __init__(self):
+        super().__init__()
+        self._results: dict[str, list[dict]] = {}
+
+    def _get_module_name(self, result):
+        if ansible.__version__ >= "2.19.0":
+            return result.task
+        return result.task_name
+
+    def _get_task_fields(self, result):
+        return {
+            field: result._task_fields[field]
+            for field in self.TASK_FIELDS
+            if field in result._task_fields
+        }
+
+    def _log_res(self, hostname, module_name, res):
+        if display.verbosity == 0:
+            return
+        if display.verbosity == 1:
+            log_func = display.v
+            brief = json.dumps(
+                {"module_name": module_name, "reachable": res["reachable"], "failed": res["failed"]},
+                default=str,
+            )
+            msg = f"[{hostname}] => {brief}"
+        elif display.verbosity == 2:
+            log_func = display.vv
+            msg = f"[{hostname}] => {json.dumps(res, default=str)}"
+        elif display.verbosity == 3:
+            log_func = display.vvv
+            msg = f"[{hostname}] => {json.dumps(res, indent=4, default=str)}"
+        else:
+            log_func = display.vvvv
+            msg = f"[{hostname}] => {json.dumps(res, indent=4, default=str)}"
+        log_func(msg)
+
+    def _record(self, result, *, reachable, failed):
+        hostname = str(result._host.get_name())
+        module_name = self._get_module_name(result)
+        self._results.setdefault(hostname, [])
+        res = dict(hostname=hostname, reachable=reachable, failed=failed)
+        # deepcopy preserves non-serializable values (e.g. Task instances in
+        # _task_fields on ansible-core 2.19+); the prior json round-trip lost
+        # or crashed on those.
+        res.update(copy.deepcopy(result._result))
+        if "invocation" in res and isinstance(res["invocation"], dict):
+            res["invocation"]["module_name"] = module_name
+        res["_task_fields"] = self._get_task_fields(result)
+        self._log_res(hostname, module_name, res)
+        self._results[hostname].append(res)
+
+    def v2_runner_on_ok(self, result):
+        self._record(result, reachable=True, failed=False)
+
+    def v2_runner_on_failed(self, result, *args, **kwargs):
+        self._record(result, reachable=True, failed=True)
+
+    def v2_runner_on_unreachable(self, result):
+        self._record(result, reachable=False, failed=True)
+
+    @property
+    def results(self) -> dict[str, list[dict]]:
+        return self._results
 
 
 def _to_native_type(value: Any) -> Any:
@@ -261,7 +359,8 @@ class AnsibleHostsBase:
         if failed_results:
             raise AnsibleModuleFailed(
                 f"Ansible module failed. If failure is expected, use `task_directives={{'ignore_errors': True}}` "
-                f"to avoid raising an exception. Details: {json.dumps(failed_results, indent=4)}"
+                f"to avoid raising an exception. Details: "
+                f"{json.dumps(failed_results, indent=4, default=str)}"
             )
 
     def _run(
@@ -344,13 +443,18 @@ class AnsibleHostsBase:
                 variable_manager=self.vm,
                 loader=self.loader
             )
+            # TQM requires a registered stdout callback name to satisfy
+            # load_callbacks(); we pass 'minimal' (one of Ansible's built-ins)
+            # then evict it from _callback_plugins before run() so nothing
+            # prints to stdout. Our own _JsonResultsCallback is attached as
+            # the sole receiver of task events.
             if ansible.__version__ >= '2.19.0':
                 tqm = TaskQueueManager(
                     inventory=self.im,
                     variable_manager=self.vm,
                     loader=self.loader,
                     passwords={},
-                    stdout_callback_name='json_results',
+                    stdout_callback_name='minimal',
                     run_tree=False,
                     forks=self.options.get("forks")
                 )
@@ -360,16 +464,30 @@ class AnsibleHostsBase:
                     variable_manager=self.vm,
                     loader=self.loader,
                     passwords={},
-                    stdout_callback='json_results',
+                    stdout_callback='minimal',
                     run_tree=False,
                     forks=self.options.get("forks")
                 )
             tqm.load_callbacks()
 
+            # Remove the built-in stdout callback (suppresses terminal output)
+            # and attach our explicit result collector in its place.
+            tqm._callback_plugins[:] = [
+                cb for cb in tqm._callback_plugins
+                if getattr(cb, 'CALLBACK_TYPE', None) != 'stdout'
+            ]
+            results_collector = _JsonResultsCallback()
+            # _init_callback_methods populates _implemented_callback_methods,
+            # which TQM.send_callback gates dispatch on. The plugin loader calls
+            # this implicitly when loading callbacks via the loader; since we
+            # construct our collector directly, we have to invoke it ourselves.
+            if hasattr(results_collector, '_init_callback_methods'):
+                results_collector._init_callback_methods()
+            tqm._callback_plugins.append(results_collector)
+
             tqm.run(play)
 
-            stdout_callback = tqm._stdout_callback
-            results = stdout_callback.results
+            results = results_collector.results
 
             # results is a dict: {hostname: [task_result_dict, ...], ...}
             # It makes sense to return this format of results for multiple hosts and multiple tasks
