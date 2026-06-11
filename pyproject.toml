@@ -24,7 +24,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: Apache Software License",
-    "Operating System :: POSIX :: Linux",
+    "Operating System :: POSIX",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -47,6 +47,7 @@ dev = [
 Homepage = "https://github.com/wangxin/ansible-host"
 Source = "https://github.com/wangxin/ansible-host"
 Issues = "https://github.com/wangxin/ansible-host/issues"
+Changelog = "https://github.com/wangxin/ansible-host/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ansible_host"]
@@ -56,6 +57,7 @@ include = [
     "src/ansible_host",
     "tests",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE",
     "pyproject.toml",
 ]
