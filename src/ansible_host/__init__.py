@@ -19,6 +19,8 @@ import inspect
 import json
 import logging
 import os
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from typing import Any
 
 import ansible
@@ -38,6 +40,13 @@ from ansible.vars.manager import VariableManager
 
 display = Display()
 init_plugin_loader()
+
+try:
+    __version__ = _pkg_version("ansible-host")
+except PackageNotFoundError:
+    # Source checkout without installed metadata (e.g., running from a tarball
+    # without ``pip install -e .``). Falls back to an inert marker.
+    __version__ = "0.0.0+unknown"
 
 # Logger for the ansible-host library. Users can configure verbosity by
 # attaching handlers to this logger (logging.getLogger("ansible_host")).
@@ -1090,8 +1099,6 @@ class AnsibleLocalhost(AnsibleHostsBase):
         inv_str = self.inventory if isinstance(self.inventory, str) else f"[{', '.join(self.inventory)}]"
         return f"AnsibleLocalhost(inventory={inv_str}, connection='local')"
 
-
-__version__ = "0.1.0a0"
 
 __all__ = [
     "AnsibleHost",

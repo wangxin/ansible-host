@@ -21,6 +21,14 @@ def test_version_present():
 
     assert isinstance(ansible_host.__version__, str)
     assert ansible_host.__version__
+    # Must match installed package metadata (i.e., pyproject.toml [project].version),
+    # not be the inert fallback. Catches a stale hardcoded version regression.
+    from importlib.metadata import version as _pkg_version
+
+    assert ansible_host.__version__ == _pkg_version("ansible-host"), (
+        f"__version__ ({ansible_host.__version__}) does not match installed "
+        f"metadata ({_pkg_version('ansible-host')})"
+    )
 
 
 def test_dunder_lookup_does_not_dispatch_as_module():
