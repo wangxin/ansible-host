@@ -28,7 +28,7 @@ Ansible has a great executor and a huge module ecosystem, but the existing Pytho
 pip install ansible-host
 ```
 
-Requires Python 3.10+ and `ansible-core>=2.16,<2.20`. Like Ansible itself, the library runs on POSIX systems (Linux, macOS, WSL) — it is not supported on native Windows.
+Requires Python 3.10+ and `ansible-core>=2.16,<2.22`. Like Ansible itself, the library runs on POSIX systems (Linux, macOS, WSL) — it is not supported on native Windows.
 
 ## Development
 
@@ -58,31 +58,116 @@ uv run pytest
 
 ## Quickstart
 
+### 30-second try — no SSH, no inventory
+
+`AnsibleLocalhost` runs modules in-process on the current machine via Ansible's `local` connection plugin. No inventory file, no SSH, no setup.
+
 ```python
-from ansible_host import AnsibleHost, AnsibleHosts
+from ansible_host import AnsibleLocalhost
 
-# Single host
-host = AnsibleHost(inventory="inventory.yml", pattern="vlab-01")
-result = host.shell("uptime")
+host = AnsibleLocalhost()
+result = host.ping()
+assert result["ping"] == "pong"
+
+result = host.command("uname -a")
 print(result["stdout"])
+```
 
-# Group of hosts (returns dict keyed by hostname)
-hosts = AnsibleHosts(inventory="inventory.yml", pattern="vms_1")
-results = hosts.ping()
+### Running against a real host
+
+Drop an inventory file alongside your script:
+
+```ini
+# inventory.ini
+[switches]
+sw-01 ansible_host=10.0.0.1 ansible_user=admin
+```
+
+```python
+from ansible_host import AnsibleHost
+
+host = AnsibleHost(inventory="inventory.ini", pattern="sw-01")
+result = host.shell("show version")
+print(result["stdout"])
+```
+
+### Multi-host fanout
+
+```python
+from ansible_host import AnsibleHosts
+
+hosts = AnsibleHosts(inventory="inventory.ini", pattern="switches")
+results = hosts.ping()                       # parallelism via forks=
 for hostname, r in results.items():
     print(hostname, r["ping"])
 
-# Any Ansible module is callable as a method via __getattr__
-host.copy(src="/etc/hosts", dest="/tmp/hosts.bak")
-host.shell("ls /tmp", task_directives={"ignore_errors": True})
+# Container API: index, iterate, len
+print(len(hosts), hosts.hostnames)
+first = hosts[0]                             # -> AnsibleHost
+by_name = hosts["sw-01"]                     # -> AnsibleHost
+for h in hosts:
+    print(h.hostname)
+```
 
-# Batch mode: queue tasks, run them in a single play
+### Dynamic dispatch and task directives
+
+Any Ansible module is callable as a method via `__getattr__` (`host.<module_name>(...)`):
+
+```python
+host.copy(src="/etc/hosts", dest="/tmp/hosts.bak")
+host.command("rm /tmp/maybe-missing", task_directives={"ignore_errors": True})
+host.shell("echo $TOKEN", task_directives={"no_log": True})
+```
+
+Common `task_directives`: `ignore_errors`, `no_log`, `when`, `failed_when`, `changed_when`, `become`.
+
+### Batch mode — queue tasks, run them in a single play
+
+```python
 with host:
     host.shell("uptime")
     host.shell("df -h")
     host.shell("free -m")
-results = host.results  # list of task results
+results = host.results
 ```
+
+### Building a queue across functions
+
+`with host:` is lexically scoped. If you need to assemble a batch across multiple functions, use the explicit form — same machinery, no scope limit:
+
+```python
+host.load_module("ansible.builtin.command", args=["uptime"])
+host.load_module("ansible.builtin.command", args=["df -h"])
+results = host.run_loaded_modules()
+```
+
+### Result shapes
+
+|              | single task             | batch (`with` block)                |
+| ------------ | ----------------------- | ----------------------------------- |
+| single host  | `dict`                  | `list[dict]`                        |
+| multi host   | `{hostname: dict}`      | `{hostname: list[dict]}`            |
+
+### Failures
+
+A failing module raises `AnsibleModuleFailed`:
+
+```python
+from ansible_host import AnsibleModuleFailed
+
+try:
+    host.command("false")
+except AnsibleModuleFailed as e:
+    print("module failed:", e)
+
+# Or suppress and inspect the result:
+result = host.command("false", task_directives={"ignore_errors": True})
+assert result["failed"] is True
+```
+
+### More examples
+
+See [`tests/test_local_integration.py`](tests/test_local_integration.py) for 30 runnable examples covering ping, command, shell, batch mode, dynamic dispatch, `no_log`, `forks`, multi-host fanout, per-host failure aggregation, and the container protocol.
 
 ## Compatibility
 
