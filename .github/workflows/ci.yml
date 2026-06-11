@@ -17,6 +17,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
       - name: Set up Python
         run: uv python install 3.12
       - name: Create venv
@@ -45,6 +46,7 @@ jobs:
       - uses: astral-sh/setup-uv@v3
         with:
           enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
       - name: Set up Python ${{ matrix.python-version }}
         run: uv python install ${{ matrix.python-version }}
       - name: Create venv
@@ -58,3 +60,4 @@ jobs:
           uv run python -c "import sys, ansible, ansible_host; print('python:', sys.version); print('ansible-core:', ansible.__version__); print('ansible-host:', ansible_host.__version__)"
       - name: Run tests
         run: uv run pytest -v
+
