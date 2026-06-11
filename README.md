@@ -131,6 +131,16 @@ with host:
 results = host.results
 ```
 
+### Building a queue across functions
+
+`with host:` is lexically scoped. If you need to assemble a batch across multiple functions, use the explicit form — same machinery, no scope limit:
+
+```python
+host.load_module("ansible.builtin.command", args=["uptime"])
+host.load_module("ansible.builtin.command", args=["df -h"])
+results = host.run_loaded_modules()
+```
+
 ### Result shapes
 
 |              | single task             | batch (`with` block)                |
