@@ -43,7 +43,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-        ansible-core: ["2.16.*", "2.17.*", "2.18.*", "2.19.*"]
+        ansible-core: ["2.16.*", "2.17.*", "2.18.*", "2.19.*", "2.20.*", "2.21.*"]
         exclude:
           # ansible-core 2.16 / 2.17 do not support Python 3.13
           - { python-version: "3.13", ansible-core: "2.16.*" }
@@ -51,6 +51,11 @@ jobs:
           # ansible-core 2.18 / 2.19 dropped Python 3.10 control-node support
           - { python-version: "3.10", ansible-core: "2.18.*" }
           - { python-version: "3.10", ansible-core: "2.19.*" }
+          # ansible-core 2.20 / 2.21 require Python 3.12+
+          - { python-version: "3.10", ansible-core: "2.20.*" }
+          - { python-version: "3.10", ansible-core: "2.21.*" }
+          - { python-version: "3.11", ansible-core: "2.20.*" }
+          - { python-version: "3.11", ansible-core: "2.21.*" }
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3

@@ -34,7 +34,7 @@ classifiers = [
     "Topic :: System :: Systems Administration",
 ]
 dependencies = [
-    "ansible-core>=2.16,<2.20",
+    "ansible-core>=2.16,<2.22",
 ]
 
 [project.optional-dependencies]
