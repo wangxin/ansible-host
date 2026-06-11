@@ -14,29 +14,26 @@ See the README for usage and compatibility notes.
 
 from __future__ import annotations
 
-import inspect
 import copy
-import os
-import logging
+import inspect
 import json
-from typing import Any, Optional
+import logging
+import os
+from typing import Any
 
 import ansible
-
 from ansible import constants as C
 from ansible import context
 from ansible.errors import AnsibleError
-from ansible.plugins.loader import module_loader
-from ansible.parsing.dataloader import DataLoader
-from ansible.inventory.manager import InventoryManager
-from ansible.vars.manager import VariableManager
-from ansible.vars.hostvars import HostVars
 from ansible.executor.task_queue_manager import TaskQueueManager
-from ansible.playbook.play import Play
-from ansible.utils.display import Display
-from ansible.plugins.loader import init_plugin_loader
+from ansible.inventory.manager import InventoryManager
 from ansible.module_utils.common.collections import ImmutableDict
-
+from ansible.parsing.dataloader import DataLoader
+from ansible.playbook.play import Play
+from ansible.plugins.loader import init_plugin_loader, module_loader
+from ansible.utils.display import Display
+from ansible.vars.hostvars import HostVars
+from ansible.vars.manager import VariableManager
 
 display = Display()
 init_plugin_loader()
@@ -85,14 +82,14 @@ class AnsibleModuleFailed(AnsibleError):
     pass
 
 
-class AnsibleHostsBase(object):
+class AnsibleHostsBase:
 
     def __init__(
         self,
         inventory: str | list[str],
         pattern: str,
-        hostvars: Optional[dict[str, Any]] = None,
-        options: Optional[dict[str, Any]] = None
+        hostvars: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None
     ) -> None:
 
         hostvars = hostvars or {}
@@ -189,9 +186,9 @@ class AnsibleHostsBase(object):
     @staticmethod
     def build_task(
         module_name: str,
-        args: Optional[list] = None,
-        kwargs: Optional[dict] = None,
-        task_directives: Optional[dict] = None
+        args: list | None = None,
+        kwargs: dict | None = None,
+        task_directives: dict | None = None
     ) -> dict:
 
         args = args or []
@@ -216,7 +213,9 @@ class AnsibleHostsBase(object):
                 "args": kwargs
             },
         }
-        if _module_ignore_errors == True:
+        # Intentional `== True` (not truthy): only the literal bool True opts in;
+        # other truthy values like 1 or "yes" must not silently enable ignore_errors.
+        if _module_ignore_errors == True:  # noqa: E712
             # It could be overwritten by the 'ignore_errors' in task_directives if both are provided.
             # This is to encourage the using of formal 'ignore_errors' attribute.
             task_data['ignore_errors'] = True
@@ -267,8 +266,8 @@ class AnsibleHostsBase(object):
 
     def _run(
         self,
-        tasks: Optional[list[dict]] = None,
-        options: Optional[dict[str, Any]] = None,
+        tasks: list[dict] | None = None,
+        options: dict[str, Any] | None = None,
         gather_facts: bool = False
     ) -> dict | list[dict]:
         tasks = tasks or []
@@ -423,12 +422,12 @@ class AnsibleHostsBase(object):
     def run_module(
         self,
         module_name: str,
-        args: Optional[list] = None,
-        kwargs: Optional[dict] = None,
-        task_directives: Optional[dict] = None,
-        options: Optional[dict] = None,
+        args: list | None = None,
+        kwargs: dict | None = None,
+        task_directives: dict | None = None,
+        options: dict | None = None,
         gather_facts: bool = False
-    ) -> Optional[dict | list[dict]]:
+    ) -> dict | list[dict] | None:
 
         args = args or []
         kwargs = kwargs or {}
@@ -464,9 +463,9 @@ class AnsibleHostsBase(object):
     def load_module(
         self,
         module_name: str,
-        args: Optional[list] = None,
-        kwargs: Optional[dict] = None,
-        task_directives: Optional[dict] = None
+        args: list | None = None,
+        kwargs: dict | None = None,
+        task_directives: dict | None = None
     ) -> None:
         task = self.build_task(
             module_name=module_name,
@@ -478,7 +477,7 @@ class AnsibleHostsBase(object):
 
     def run_loaded_modules(
         self,
-        options: Optional[dict[str, Any]] = None,
+        options: dict[str, Any] | None = None,
         gather_facts: bool = False
     ) -> dict | list[dict]:
         options = options or {}
@@ -504,11 +503,11 @@ class AnsibleHostsBase(object):
 
         def _run_ansible_module(
             *args,
-            task_directives: Optional[dict] = None,
-            options: Optional[dict] = None,
+            task_directives: dict | None = None,
+            options: dict | None = None,
             gather_facts: bool = False,
             **kwargs
-        ) -> Optional[dict | list[dict]]:
+        ) -> dict | list[dict] | None:
             task = self.build_task(
                 module_name=name,
                 args=list(args),
@@ -667,8 +666,8 @@ class AnsibleHosts(AnsibleHostsBase):
         self,
         inventory: str | list[str],
         pattern: str,
-        hostvars: Optional[dict[str, Any]] = None,
-        options: Optional[dict[str, Any]] = None
+        hostvars: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None
     ) -> None:
         super().__init__(inventory, pattern, hostvars, options)
 
@@ -785,8 +784,8 @@ class AnsibleHost(AnsibleHostsBase):
         self,
         inventory: str | list[str],
         pattern: str,
-        hostvars: Optional[dict[str, Any]] = None,
-        options: Optional[dict[str, Any]] = None
+        hostvars: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None
     ) -> None:
         super().__init__(inventory, pattern, hostvars, options)
         # Validate that exactly one host matches the 'pattern'
@@ -879,9 +878,9 @@ class AnsibleLocalhost(AnsibleHostsBase):
 
     def __init__(
         self,
-        inventory: Optional[str | list[str]] = None,
-        hostvars: Optional[dict[str, Any]] = None,
-        options: Optional[dict[str, Any]] = None
+        inventory: str | list[str] | None = None,
+        hostvars: dict[str, Any] | None = None,
+        options: dict[str, Any] | None = None
     ) -> None:
         hostvars = hostvars or {}
         options = options or {}

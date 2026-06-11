@@ -26,6 +26,32 @@ pip install ansible-host
 
 Requires Python 3.10+ and `ansible-core>=2.16,<2.20`. Like Ansible itself, the library runs on POSIX systems (Linux, macOS, WSL) — it is not supported on native Windows.
 
+## Development
+
+The recommended dev workflow uses [`uv`](https://docs.astral.sh/uv/) — it manages the virtualenv directly, sidestepping the `python3-venv` split on Ubuntu and installing dependencies an order of magnitude faster than pip.
+
+```bash
+# One-time: install uv (https://docs.astral.sh/uv/getting-started/installation/)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# In the repo
+uv venv                        # creates .venv with the default Python
+uv pip install -e ".[dev]"     # editable install + dev extras
+uv run pytest                  # run the test suite
+uv run ruff check src tests    # lint
+```
+
+To target a specific Python or `ansible-core` version (matches the CI matrix):
+
+```bash
+uv venv --python 3.12
+uv pip install -e ".[dev]"
+uv pip install "ansible-core==2.19.*"
+uv run pytest
+```
+
+`pip` and a manually-managed venv still work — `uv` is just the convenience.
+
 ## Quickstart
 
 ```python

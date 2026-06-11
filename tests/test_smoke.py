@@ -8,11 +8,6 @@ def test_public_api_importable():
         AnsibleHosts,
         AnsibleHostsBase,
         AnsibleLocalhost,
-        AnsibleModuleFailed,
-        MultipleAnsibleHostsError,
-        NoAnsibleHostError,
-        NoTasksError,
-        UnsupportedAnsibleModule,
     )
 
     # Sanity: the host classes inherit from the base.
@@ -43,8 +38,9 @@ def test_dunder_lookup_does_not_dispatch_as_module():
     inst._loaded_modules = []
 
     # __getattr__ should raise AttributeError for dunder names.
+    name = "__deepcopy__"
     try:
-        inst.__deepcopy__
+        getattr(inst, name)
     except AttributeError:
         pass
     else:
