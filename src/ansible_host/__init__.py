@@ -39,8 +39,9 @@ from ansible.vars.manager import VariableManager
 display = Display()
 init_plugin_loader()
 
-# Logger for Ansible Python API
-logger = logging.getLogger("ansible_pyapi")
+# Logger for the ansible-host library. Users can configure verbosity by
+# attaching handlers to this logger (logging.getLogger("ansible_host")).
+logger = logging.getLogger("ansible_host")
 
 
 class _JsonResultsCallback(CallbackBase):
@@ -384,7 +385,7 @@ class AnsibleHostsBase:
             # According to the above logic, `verbosity` from `self._run` will overwrite the one from `self.__init__`.
             log_verbosity = _options.pop('verbosity', None)
             if log_verbosity is None:
-                log_verbosity = int(os.environ.get('ANSIBLE_PYAPI_VERBOSITY', 2))
+                log_verbosity = int(os.environ.get('ANSIBLE_HOST_VERBOSITY', 2))
 
             # NOTE: ``ansible.context`` holds a process-global CLI context. This call
             # mutates it for the entire process. Two ``AnsibleHosts`` instances running
@@ -419,8 +420,9 @@ class AnsibleHostsBase:
                             kwargs = {k: v for k, v in task['action'].get('args', {}).items() if k != '_raw_params'}
                             task_directives = {k: v for k, v in task.items() if k != 'action'}
                             log_details = (
-                                f'{module_name}, args={json.dumps(args)}, '
-                                f'kwargs={json.dumps(kwargs)}, task_directives={json.dumps(task_directives)}'
+                                f'{module_name}, args={json.dumps(args, default=str)}, '
+                                f'kwargs={json.dumps(kwargs, default=str)}, '
+                                f'task_directives={json.dumps(task_directives, default=str)}'
                             )
                     logger.debug(f'{log_prefix} {log_details}')
 
@@ -518,13 +520,19 @@ class AnsibleHostsBase:
                 if log_verbosity == 1:
                     logger.debug(f'{caller_file}:{caller_line} >> {self.hostnames} => done')
                 elif log_verbosity == 2:
-                    logger.debug(f'{caller_file}:{caller_line} >> {self.hostnames} => {json.dumps(results)}')
+                    logger.debug(
+                        f'{caller_file}:{caller_line} >> {self.hostnames} => '
+                        f'{json.dumps(results, default=str)}'
+                    )
                 elif log_verbosity >= 3:
-                    logger.debug(f'{caller_file}:{caller_line} >> {self.hostnames} => {json.dumps(results, indent=4)}')
+                    logger.debug(
+                        f'{caller_file}:{caller_line} >> {self.hostnames} => '
+                        f'{json.dumps(results, indent=4, default=str)}'
+                    )
                     if log_verbosity >= 4:
                         logger.debug(
                             f'{caller_file}:{caller_line} >> TaskQueueManager Stats: '
-                            f'{json.dumps(_tqm_stats, indent=4)}'
+                            f'{json.dumps(_tqm_stats, indent=4, default=str)}'
                         )
 
         finally:
