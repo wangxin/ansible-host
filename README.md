@@ -56,6 +56,31 @@ uv run pytest
 
 `pip` and a manually-managed venv still work — `uv` is just the convenience.
 
+### Testing
+
+The suite has two tiers:
+
+- **Tier-1 (default)** — runs modules in-process over Ansible's `local` connection. No SSH or external host required; this is what `uv run pytest` and CI's matrix run.
+- **Tier-2 (`ssh` marker)** — exercises Ansible's real SSH transport (connection options, remote module exec, `become`, multi-host fanout) against a throwaway containerized sshd in [`tests/ssh/`](tests/ssh/). These tests **auto-skip** unless an SSH target is configured, so the default run stays green without any SSH setup.
+
+Run the SSH tier locally (requires Docker):
+
+```bash
+# Start a throwaway SSH target with an ephemeral key authorized on it
+ssh-keygen -t ed25519 -N '' -f /tmp/ah_ssh_key
+export AH_SSH_PUBLIC_KEY="$(cat /tmp/ah_ssh_key.pub)"
+docker compose -f tests/ssh/docker-compose.yml up -d --build
+
+# Point the ssh-marked tests at it
+AH_SSH_HOST=127.0.0.1 AH_SSH_PORT=2222 AH_SSH_USER=ansible AH_SSH_KEY=/tmp/ah_ssh_key \
+    uv run pytest -m ssh
+
+# Tear down
+docker compose -f tests/ssh/docker-compose.yml down -v
+```
+
+CI runs Tier-1 across the full Python × `ansible-core` matrix, plus a dedicated `test-ssh` job that builds the container and runs the Tier-2 tests.
+
 ## Quickstart
 
 ### 30-second try — no SSH, no inventory
@@ -148,6 +173,32 @@ results = host.run_loaded_modules()
 | single host  | `dict`                  | `list[dict]`                        |
 | multi host   | `{hostname: dict}`      | `{hostname: list[dict]}`            |
 
+### Reading host variables
+
+Inspect inventory variables resolved by Ansible — host vars, group vars, and
+runtime extra vars — without running a module:
+
+```python
+host = AnsibleHost(inventory="inventory.ini", pattern="sw-01")
+
+# Variables defined directly on the host (raw — Jinja2 templates not rendered):
+host.get_host_var("ansible_user")          # -> "admin"
+host.host_vars                             # -> dict of host-scoped vars
+
+# Fully-resolved view a host can see (host + group + extra vars), with
+# Jinja2 templates rendered:
+host.get_visible_var("some_group_var")     # group var visible to the host
+host.get_visible_var("missing", "default") # default when absent
+host.visible_vars                          # -> dict of all resolved vars
+
+# Runtime overrides (highest precedence):
+host.update_extra_vars({"feature_flag": True})
+host.extra_vars                            # -> current extra vars
+```
+
+`AnsibleHosts` exposes the host-keyed form: `hosts.get_host_var("sw-01", "ansible_user")`
+and `hosts.get_visible_var("sw-01", "some_var")`.
+
 ### Failures
 
 A failing module raises `AnsibleModuleFailed`:
@@ -167,7 +218,11 @@ assert result["failed"] is True
 
 ### More examples
 
-See [`tests/test_local_integration.py`](tests/test_local_integration.py) for 30 runnable examples covering ping, command, shell, batch mode, dynamic dispatch, `no_log`, `forks`, multi-host fanout, per-host failure aggregation, and the container protocol.
+See the test suite for runnable examples:
+
+- [`tests/test_local_integration.py`](tests/test_local_integration.py) — ping, command, shell, batch mode, dynamic dispatch, `no_log`, `forks`, multi-host fanout, per-host failure aggregation, and the container protocol.
+- [`tests/test_host_vars.py`](tests/test_host_vars.py) — reading host/group/extra variables and precedence.
+- [`tests/test_execution_edge_cases.py`](tests/test_execution_edge_cases.py) — error contracts, failure aggregation, unreachable hosts, and `gather_facts`.
 
 ## Compatibility
 

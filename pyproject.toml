@@ -74,3 +74,6 @@ ignore = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "ssh: Tier-2 integration tests that require a real SSH target (see tests/ssh/). Auto-skip unless AH_SSH_KEY and a reachable target are configured.",
+]

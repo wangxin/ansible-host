@@ -226,6 +226,12 @@ class AnsibleHostsBase:
 
         self.vm = VariableManager(loader=self.loader, inventory=self.im)
 
+        # Ansible's load_extra_vars() memoizes its result and VariableManager
+        # stores it by reference, so mutating vm.extra_vars in place (via the
+        # hostvars= path below or update_extra_vars) would leak into every other
+        # VariableManager in the process. Give this instance its own copy.
+        self.vm._extra_vars = dict(self.vm._extra_vars)
+
         # Use C.XXXX, so that defaults are consistent with ansible.cfg, can be overridden by env vars
         self.options = {
             "forks": C.DEFAULT_FORKS,
@@ -321,9 +327,10 @@ class AnsibleHostsBase:
                 "args": kwargs
             },
         }
-        # Intentional `== True` (not truthy): only the literal bool True opts in;
-        # other truthy values like 1 or "yes" must not silently enable ignore_errors.
-        if _module_ignore_errors == True:  # noqa: E712
+        # Intentional identity check (not truthy, not ==): only the literal bool
+        # True opts in. `==` would wrongly accept 1/1.0 because `1 == True` is
+        # True in Python; `is True` rejects every non-bool value.
+        if _module_ignore_errors is True:
             # It could be overwritten by the 'ignore_errors' in task_directives if both are provided.
             # This is to encourage the using of formal 'ignore_errors' attribute.
             task_data['ignore_errors'] = True
