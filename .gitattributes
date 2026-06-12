@@ -1,0 +1,4 @@
+# Shell scripts must use LF endings so they work inside Linux containers
+# (and so sh doesn't choke on CRLF), regardless of the contributor's OS.
+*.sh text eol=lf
+tests/ssh/entrypoint.sh text eol=lf

@@ -76,3 +76,47 @@ jobs:
       - name: Run tests
         run: uv run pytest -v
 
+  test-ssh:
+    # Tier-2: exercise Ansible's real ssh transport against a throwaway
+    # containerized sshd (tests/ssh/). Runs the `ssh`-marked tests only.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Create venv
+        run: uv venv --python 3.12
+      - name: Install package + dev deps
+        run: uv pip install -e ".[dev]"
+      - name: Generate ephemeral SSH key
+        run: ssh-keygen -t ed25519 -N '' -f "$RUNNER_TEMP/ah_ssh_key"
+      - name: Start SSH target container
+        run: |
+          export AH_SSH_PUBLIC_KEY="$(cat "$RUNNER_TEMP/ah_ssh_key.pub")"
+          docker compose -f tests/ssh/docker-compose.yml up -d --build
+      - name: Wait for SSH to accept connections
+        run: |
+          for i in $(seq 1 30); do
+            if (exec 3<>/dev/tcp/127.0.0.1/2222) 2>/dev/null; then
+              echo "ssh is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::SSH target did not come up"
+          docker compose -f tests/ssh/docker-compose.yml logs
+          exit 1
+      - name: Run SSH integration tests
+        env:
+          AH_SSH_HOST: 127.0.0.1
+          AH_SSH_PORT: "2222"
+          AH_SSH_USER: ansible
+          AH_SSH_KEY: ${{ runner.temp }}/ah_ssh_key
+        run: uv run pytest -m ssh -v
+      - name: Tear down SSH target
+        if: always()
+        run: docker compose -f tests/ssh/docker-compose.yml down -v
+

@@ -1,0 +1,19 @@
+# Tier-2 SSH target for integration tests. Bring it up with:
+#
+#   export AH_SSH_PUBLIC_KEY="$(cat /path/to/key.pub)"
+#   docker compose -f tests/ssh/docker-compose.yml up -d --build
+#
+# then point the tests at it:
+#
+#   AH_SSH_HOST=127.0.0.1 AH_SSH_PORT=2222 AH_SSH_USER=ansible \
+#   AH_SSH_KEY=/path/to/key uv run pytest -m ssh
+services:
+  ssh-target:
+    build:
+      context: .
+    image: ansible-host-ssh-target
+    ports:
+      - "2222:22"
+    environment:
+      # Public key authorized for the `ansible` user; injected at runtime.
+      PUBLIC_KEY: "${AH_SSH_PUBLIC_KEY:-}"
