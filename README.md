@@ -6,7 +6,7 @@
 
 A thin Python wrapper over Ansible's executor. Lets you run Ansible modules from Python with structured results, batch execution, and a host-object-first API — without going through `pytest-ansible` or `ansible-runner`.
 
-> **Status: alpha (0.1.0a0).** Built from a working internal implementation; API is stable in shape but may shift in details before 1.0.
+> **Status: beta (0.1.0).** Built from a working internal implementation; API is stable in shape but may shift in details before 1.0.
 
 ## Why this exists
 
